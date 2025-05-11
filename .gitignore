@@ -1,0 +1,12 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Системные файлы
+.DS_Store
+.idea/
+
+# Логи и временные файлы
+*.log
+*.tmp
