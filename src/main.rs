@@ -75,10 +75,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     rooms::join_room(&client, &alice_data.access_token, &room_id).await?;
     println!("Dasha присоединилась к комнате");
 
-    // Отправка сообщения от Alice
     messages::send_message(&client, &alice_data.access_token, &room_id, "Привет от Dasha!").await?;
 
-    // Прослушивание сообщений от Vasdz
     sync::listen_messages(&client, &login_data.access_token, &room_id).await?;
 
     Ok(())
