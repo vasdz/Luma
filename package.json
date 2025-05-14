@@ -1,0 +1,32 @@
+{
+  "name": "luma",
+  "version": "1.0.0",
+  "description": "Мессенджер на основе протокола Matrix (Rust + Synapse)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev:css": "tailwindcss -i ./src/styles/index.css -o ./public/output.css --watch",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:android:init": "tauri android init"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.6",
+    "@tauri-apps/cli": "^2.5.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.1.6",
+    "vite": "^6.3.5"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.5.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
