@@ -7,7 +7,7 @@
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5177",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
+    "frontendDist": "C:/Users/alexl/RustroverProjects/Luma/dist"
   },
   "app": {
     "windows": [
