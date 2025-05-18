@@ -1,83 +1,153 @@
-mod client;
-mod rooms;
-mod messages;
-mod sync;
-use reqwest::Client;
+use axum::{
+    extract::Json,
+    http::{StatusCode, Uri},
+    response::IntoResponse,
+    routing::{get, post},
+    Router,
+};
 use serde::{Deserialize, Serialize};
-use std::error::Error;
+use std::net::SocketAddr;
+use tower_http::cors::{CorsLayer, Any};
 
-#[derive(Serialize)]
-struct LoginRequest<'a> {
-    r#type: &'a str,
-    identifier: UserIdentifier<'a>,
-    password: &'a str,
-    device_id: &'a str,
-}
-
-#[derive(Serialize)]
-struct UserIdentifier<'a> {
-    r#type: &'a str,
-    user: &'a str,
-}
+mod client;
+mod matrix_api;
+mod rooms;
+mod sync;
 
 #[derive(Deserialize)]
-struct LoginResponse {
+struct AuthPayload {
+    username: String,
+    password: String,
+}
+
+#[derive(Serialize)]
+struct TokenResponse {
     access_token: String,
-    home_server: String,
-    user_id: String,
+}
+
+#[derive(Serialize)]
+struct RoomsResponse {
+    rooms: Vec<String>,
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let client = client::create_client().await;
+async fn main() {
+    // CORS
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
 
-    // Авторизация первого пользователя
-    let login_url = format!("{}/_matrix/client/r0/login", client::HOMESERVER);
+    let app = Router::new()
+        .route("/api/register", post(register_handler))
+        .route("/api/login", post(login_handler))
+        .route("/api/rooms", get(get_rooms_handler))
+        .route("/api/rooms/:room_id/messages", get(get_messages_handler))
+        .route("/api/rooms/:room_id/send", post(send_message_handler))
+        .layer(cors);
 
-    let request = LoginRequest {
-        r#type: "m.login.password",
-        identifier: UserIdentifier {
-            r#type: "m.id.user",
-            user: "@vasdz:localhost",
-        },
-        password: "vasdz_gg_net",
-        device_id: "my_rust_client",
-    };
+    let addr = "0.0.0.0:3000".parse().unwrap();
+    println!("🚀 Сервер запущен на http://{}", addr);
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+}
 
-    let res = client.post(&login_url).json(&request).send().await?;
-    let body = res.text().await?;
-    let login_data: LoginResponse = serde_json::from_str(&body)?;
-    println!("Авторизация успешна: {}", login_data.user_id);
+// --- Регистрация ---
+async fn register_handler(
+    Json(payload): Json<AuthPayload>,
+) -> Result<Json<TokenResponse>, (StatusCode, String)> {
+    match matrix_api::matrix_register(&payload.username, &payload.password).await {
+        Ok(token) => Ok(Json(TokenResponse {
+            access_token: token,
+        })),
+        Err(e) => {
+            let err_str = e.to_string();
+            if err_str.contains("M_USER_IN_USE") || err_str.contains("duplicate") {
+                Err((StatusCode::CONFLICT, "Пользователь уже существует".into()))
+            } else {
+                Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Ошибка регистрации: {}", err_str)))
+            }
+        }
+    }
+}
 
-    // Создание комнаты
-    let room_id = rooms::create_room(&client, &login_data.access_token).await?;
-    println!("Комната создана: {}", room_id);
+// --- Вход ---
+async fn login_handler(
+    Json(payload): Json<AuthPayload>,
+) -> Result<Json<TokenResponse>, (StatusCode, String)> {
+    match matrix_api::matrix_login(&payload.username, &payload.password).await {
+        Ok(token) => Ok(Json(TokenResponse {
+            access_token: token,
+        })),
+        Err(e) => {
+            let err_str = e.to_string();
+            if err_str.contains("M_FORBIDDEN") || err_str.contains("unauthorized") {
+                Err((StatusCode::UNAUTHORIZED, "Неверные имя пользователя или пароль".into()))
+            } else {
+                Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Ошибка входа: {}", err_str)))
+            }
+        }
+    }
+}
 
-    // Авторизация второго пользователя
-    let login_url = format!("{}/_matrix/client/r0/login", client::HOMESERVER);
+// --- Получение комнат ---
+async fn get_rooms_handler(uri: Uri) -> Result<Json<RoomsResponse>, (StatusCode, String)> {
+    let token = extract_token(&uri)?;
+    match matrix_api::get_rooms(&token).await {
+        Ok(rooms) => Ok(Json(RoomsResponse { rooms })),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
 
-    let request = LoginRequest {
-        r#type: "m.login.password",
-        identifier: UserIdentifier {
-            r#type: "m.id.user",
-            user: "@dasha:localhost",
-        },
-        password: "pass12",
-        device_id: "dasha_device",
-    };
+// --- Получение сообщений ---
+async fn get_messages_handler(
+    uri: Uri,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let (room_id, token) = parse_room_and_token(&uri)?;
+    match matrix_api::get_messages(&room_id, &token).await {
+        Ok(messages) => Ok(Json(serde_json::json!({ "messages": messages }))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
 
-    let res = client.post(&login_url).json(&request).send().await?;
-    let body = res.text().await?;
-    let alice_data: LoginResponse = serde_json::from_str(&body)?;
-    println!("Авторизация успешна: {}", alice_data.user_id);
+// --- Отправка сообщений ---
+async fn send_message_handler(
+    uri: Uri,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let (room_id, token) = parse_room_and_token(&uri)?;
+    let message = payload.get("message")
+        .and_then(|m| m.as_str())
+        .ok_or((StatusCode::BAD_REQUEST, "Сообщение не указано".to_string()))?;
 
-    // Присоединение второго пользователя к комнате
-    rooms::join_room(&client, &alice_data.access_token, &room_id).await?;
-    println!("Dasha присоединилась к комнате");
+    match matrix_api::send_message(&room_id, &token, message).await {
+        Ok(_) => Ok(StatusCode::OK),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
 
-    messages::send_message(&client, &alice_data.access_token, &room_id, "Привет от Dasha!").await?;
+// --- Вспомогательные функции ---
+fn extract_token(uri: &Uri) -> Result<String, (StatusCode, String)> {
+    let query = uri.query().ok_or((StatusCode::UNAUTHORIZED, "Токен не предоставлен".to_string()))?;
+    let token = query
+        .split('&')
+        .find(|p| p.starts_with("access_token="))
+        .and_then(|p| p.split('=').nth(1))
+        .map(String::from)
+        .ok_or((StatusCode::UNAUTHORIZED, "Токен не предоставлен".to_string()))?;
+    Ok(token)
+}
 
-    sync::listen_messages(&client, &login_data.access_token, &room_id).await?;
-
-    Ok(())
+fn parse_room_and_token(uri: &Uri) -> Result<(String, String), (StatusCode, String)> {
+    let path = uri.path();
+    let room_id = path.split('/').nth(4).ok_or((StatusCode::BAD_REQUEST, "Неверный ID комнаты".to_string()))?;
+    let query = uri.query().ok_or((StatusCode::UNAUTHORIZED, "Токен не предоставлен".to_string()))?;
+    let token = query.split('&')
+        .find(|p| p.starts_with("access_token="))
+        .and_then(|p| p.split('=').nth(1))
+        .map(|s| s.to_string())
+        .ok_or((StatusCode::UNAUTHORIZED, "Токен не предоставлен".to_string()))?;
+    Ok((room_id.to_string(), token))
 }

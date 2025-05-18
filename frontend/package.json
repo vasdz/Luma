@@ -4,8 +4,7 @@
   "description": "Мессенджер на основе протокола Matrix (Rust + Synapse)",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev:css": "tailwindcss -i ./src/styles/index.css -o ./public/output.css --watch",
+    "dev:css": "tailwindcss -i ../src/styles/index.css -o ./public/output.css --watch",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",

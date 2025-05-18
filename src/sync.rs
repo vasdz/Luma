@@ -9,38 +9,27 @@ pub async fn listen_messages(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let sync_url = format!("{}/_matrix/client/r0/sync", HOMESERVER);
     let mut since: Option<String> = None;
-
     loop {
         let mut url = reqwest::Url::parse(&sync_url)?;
-
-        // Создаем базовый набор параметров
-        let mut query = vec![
+        let mut params: Vec<(&str, &str)> = vec![
             ("access_token", access_token),
             ("timeout", "30000"),
         ];
-
-        // Добавляем параметр since, если он есть
-        if let Some(s) = &since {
-            query.push(("since", s.as_str()));
+        if let Some(ref s) = since {
+            params.push(("since", s.as_str()));
         }
-
-        url.query_pairs_mut().extend_pairs(query.into_iter());
+        url.query_pairs_mut().extend_pairs(params);
 
         let res = client.get(url).send().await?;
-        let json: Value = res.json().await?;
+        let json = res.json::<Value>().await?;
+        since = json.get("next_batch").and_then(|v| v.as_str()).map(String::from);
 
-        if let Some(next_batch) = json["next_batch"].as_str() {
-            since = Some(next_batch.to_string());
-        }
-
-        if let Some(room_data) = json["rooms"]["join"].get(room_id) {
-            if let Some(events) = room_data["timeline"]["events"].as_array() {
-                for event in events {
-                    if event["type"] == "m.room.message" && event["content"]["msgtype"] == "m.text" {
-                        let sender = event["sender"].as_str().unwrap_or("?");
-                        let body = event["content"]["body"].as_str().unwrap_or("");
-                        println!("[{}] {}: {}", room_id, sender, body);
-                    }
+        if let Some(events) = json["rooms"]["join"][room_id]["timeline"]["events"].as_array() {
+            for ev in events {
+                if ev["type"] == "m.room.message" {
+                    let sender = ev["sender"].as_str().unwrap_or("?");
+                    let body = ev["content"]["body"].as_str().unwrap_or("");
+                    println!("{}: {}", sender, body);
                 }
             }
         }

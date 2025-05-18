@@ -1,6 +1,6 @@
 use reqwest::Client;
 
-pub async fn create_client() -> Client {
+pub fn create_client() -> Client {
     Client::new()
 }
 
