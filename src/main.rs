@@ -8,6 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tower_http::cors::{CorsLayer, Any};
+use serde_json::Value;
 
 mod client;
 mod matrix_api;
@@ -44,6 +45,7 @@ async fn main() {
         .route("/api/rooms", get(get_rooms_handler))
         .route("/api/rooms/:room_id/messages", get(get_messages_handler))
         .route("/api/rooms/:room_id/send", post(send_message_handler))
+        .route("/api/createRoom", post(create_room_handler))
         .layer(cors);
 
     let addr = "0.0.0.0:3000".parse().unwrap();
@@ -124,6 +126,26 @@ async fn send_message_handler(
 
     match matrix_api::send_message(&room_id, &token, message).await {
         Ok(_) => Ok(StatusCode::OK),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+/// --- Создание новой комнаты ---
+async fn create_room_handler(
+    uri: Uri,
+    Json(body): Json<Value>, // JSON из запроса { name, preset }
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    // 1) забираем токен из query
+    let token = extract_token(&uri)?;
+    // 2) получаем поля или ставим дефолт
+    let name = body.get("name").and_then(Value::as_str).unwrap_or("Новая комната");
+    let preset = body.get("preset").and_then(Value::as_str).unwrap_or("private_chat");
+    // 3) вызываем matrix_api
+    match matrix_api::create_room(name, preset, &token).await {
+        Ok(room_id) => {
+            let resp = serde_json::json!({ "room_id": room_id });
+            Ok((StatusCode::CREATED, Json(resp)))
+        }
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
     }
 }

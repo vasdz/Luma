@@ -1,9 +1,16 @@
 import React from 'react';
 
-interface Props { onSelectChat: (id: string) => void; }
+interface Room {
+    room_id: string;
+    name?: string;
+}
+
+interface Props {
+    onSelectChat: (id: string) => void;
+}
 
 const ChatList: React.FC<Props> = ({ onSelectChat }) => {
-    const [rooms, setRooms] = React.useState<string[]>([]);
+    const [rooms, setRooms] = React.useState<Room[]>([]);
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
 
@@ -18,7 +25,8 @@ const ChatList: React.FC<Props> = ({ onSelectChat }) => {
                 return res.json();
             })
             .then(data => {
-                setRooms(data.rooms);
+                // Предполагается, что сервер возвращает { rooms: Room[] }
+                setRooms(data.rooms || []);
                 setError(null);
             })
             .catch(e => setError(e.message))
@@ -26,18 +34,18 @@ const ChatList: React.FC<Props> = ({ onSelectChat }) => {
     }, [token]);
 
     if (loading) return <div className="w-1/4 p-4">Загрузка комнат...</div>;
-    if (error)   return <div className="w-1/4 p-4 text-red-600">{error}</div>;
+    if (error) return <div className="w-1/4 p-4 text-red-600">{error}</div>;
     if (rooms.length === 0) return <div className="w-1/4 p-4">Нет комнат</div>;
 
     return (
         <div className="w-1/4 bg-gray-200 p-4">
-            {rooms.map(r => (
+            {rooms.map(room => (
                 <div
-                    key={r}
-                    onClick={() => onSelectChat(r)}
+                    key={room.room_id}
+                    onClick={() => onSelectChat(room.room_id)}
                     className="cursor-pointer p-2 hover:bg-gray-300"
                 >
-                    {r}
+                    {room.name || room.room_id}
                 </div>
             ))}
         </div>
@@ -45,3 +53,4 @@ const ChatList: React.FC<Props> = ({ onSelectChat }) => {
 };
 
 export default ChatList;
+

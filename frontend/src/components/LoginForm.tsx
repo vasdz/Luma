@@ -15,7 +15,11 @@ const LoginForm: React.FC<Props> = ({ onAuthSuccess }) => {
             const res = await fetch("/api/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ username, password }),
+                body: JSON.stringify({
+                    type: "m.login.password",
+                    user: username,
+                    password: password,
+                }),
             });
 
             if (!res.ok) {

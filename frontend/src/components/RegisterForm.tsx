@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 
-interface Props { onRegisterSuccess: (tok: string) => void; }
+interface Props {
+    onRegisterSuccess: (tok: string) => void;
+}
 
 const RegisterForm: React.FC<Props> = ({ onRegisterSuccess }) => {
     const [username, setUsername] = useState("");
@@ -18,39 +20,51 @@ const RegisterForm: React.FC<Props> = ({ onRegisterSuccess }) => {
                 body: JSON.stringify({
                     username,
                     password,
-                    auth: { type: "m.login.dummy" },
+                    auth: { type: "m.login.dummy" }, // для Synapse без капчи и email
                 }),
             });
 
             if (!res.ok) {
-                const err = await res.text();
-                throw new Error(err || 'Ошибка при регистрации');
+                const errJson = await res.json().catch(() => null);
+                if (errJson?.error) {
+                    throw new Error(errJson.error);
+                }
+                const errText = await res.text();
+                throw new Error(errText || "Ошибка при регистрации");
             }
 
-            const { access_token } = await res.json();
+            const json = await res.json();
+            console.log("Регистрация успешна:", json);
+            const { access_token } = json;
             onRegisterSuccess(access_token);
         } catch (e: any) {
+            console.error("Ошибка:", e);
             setError(e.message);
         }
     };
 
+
     return (
-        <form onSubmit={handleSubmit} className="p-4 bg-white rounded shadow">
+        <form onSubmit={handleSubmit} className="p-4 bg-white rounded shadow space-y-2">
             <input
+                className="border p-2 w-full"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
-                placeholder="Username"
+                placeholder="Имя пользователя"
                 required
             />
             <input
+                className="border p-2 w-full"
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="Password"
+                placeholder="Пароль"
                 required
             />
             {error && <div className="text-red-600">{error}</div>}
-            <button type="submit">Зарегистрироваться</button>
+            <button type="submit" className="bg-blue-500 text-white p-2 rounded">
+                Зарегистрироваться
+            </button>
         </form>
     );
 };

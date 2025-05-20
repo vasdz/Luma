@@ -43,6 +43,28 @@ pub async fn matrix_login(username: &str, password: &str) -> Result<String, Box<
         .ok_or_else(|| "No access_token in response".into())
 }
 
+pub async fn create_room(
+    name: &str,
+    preset: &str,
+    access_token: &str,
+) -> Result<String, Box<dyn Error>> {
+    let client = Client::new();
+    let url = format!(
+        "{}/_matrix/client/v3/createRoom?access_token={}",
+        HOMESERVER, access_token
+    );
+    let body = serde_json::json!({
+        "name": name,
+        "preset": preset
+    });
+    let res = client.post(&url).json(&body).send().await?;
+    let json = res.json::<Value>().await?;
+    json.get("room_id")
+        .and_then(Value::as_str)
+        .map(String::from)
+        .ok_or_else(|| "No room_id in response".into())
+}
+
 // --- Получение комнат ---
 pub async fn get_rooms(access_token: &str) -> Result<Vec<String>, Box<dyn Error>> {
     let client = Client::new();
