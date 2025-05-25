@@ -24,3 +24,23 @@ pub async fn create_room(
         .map(String::from)
         .ok_or_else(|| "No room_id in response".into())
 }
+
+// Новая функция выхода из комнаты
+pub async fn leave_room(
+    room_id: &str,
+    access_token: &str,
+) -> Result<(), Box<dyn Error>> {
+    let url = format!(
+        "{}/_matrix/client/v3/rooms/{}/leave?access_token={}",
+        HOMESERVER, room_id, access_token
+    );
+    let client = Client::new();
+    let res = client.post(&url).send().await?;
+    if res.status().is_success() {
+        Ok(())
+    } else {
+        let text = res.text().await.unwrap_or_default();
+        Err(format!("Failed to leave room: {}", text).into())
+    }
+}
+

@@ -1,5 +1,5 @@
 use axum::{
-    extract::Json,
+    extract::{Json, Path},  
     http::{StatusCode, Uri},
     response::IntoResponse,
     routing::{get, post},
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tower_http::cors::{CorsLayer, Any};
 use serde_json::Value;
+use crate::rooms::leave_room;
 
 mod client;
 mod matrix_api;
@@ -43,10 +44,13 @@ async fn main() {
         .route("/api/register", post(register_handler))
         .route("/api/login", post(login_handler))
         .route("/api/rooms", get(get_rooms_handler))
+        .route("/api/rooms/:room_id/leave", post(leave_room_handler))
+        .route("/api/rooms/:room_id/invite/:user_id", post(invite_user_handler))
         .route("/api/rooms/:room_id/messages", get(get_messages_handler))
         .route("/api/rooms/:room_id/send", post(send_message_handler))
         .route("/api/createRoom", post(create_room_handler))
         .layer(cors);
+
 
     let addr = "0.0.0.0:3000".parse().unwrap();
     println!("🚀 Сервер запущен на http://{}", addr);
@@ -103,6 +107,17 @@ async fn get_rooms_handler(uri: Uri) -> Result<Json<RoomsResponse>, (StatusCode,
     }
 }
 
+// --- Обработчик выхода из комнаты ---
+async fn leave_room_handler(
+    uri: Uri,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let (room_id, token) = parse_room_and_token(&uri)?;
+    match rooms::leave_room(&room_id, &token).await {
+        Ok(_) => Ok(StatusCode::OK),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
 // --- Получение сообщений ---
 async fn get_messages_handler(
     uri: Uri,
@@ -146,6 +161,17 @@ async fn create_room_handler(
             let resp = serde_json::json!({ "room_id": room_id });
             Ok((StatusCode::CREATED, Json(resp)))
         }
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+    }
+}
+
+async fn invite_user_handler(
+    Path((room_id, user_id)): Path<(String, String)>,
+    uri: Uri,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let token = extract_token(&uri)?;
+    match matrix_api::invite_user(&room_id, &user_id, &token).await {
+        Ok(_) => Ok(StatusCode::OK),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
     }
 }

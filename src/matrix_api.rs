@@ -109,3 +109,26 @@ pub async fn send_message(room_id: &str, access_token: &str, message: &str) -> R
     }
     Ok(())
 }
+
+pub async fn invite_user(
+    room_id: &str,
+    user_id: &str,
+    access_token: &str,
+) -> Result<(), Box<dyn Error>> {
+    let client = Client::new();
+    let url = format!(
+        "{}/_matrix/client/r0/rooms/{}/invite?access_token={}",
+        HOMESERVER, room_id, access_token
+    );
+    let body = serde_json::json!({
+        "user_id": user_id
+    });
+    let res = client.post(&url).json(&body).send().await?;
+
+    if res.status().is_success() {
+        Ok(())
+    } else {
+        let text = res.text().await.unwrap_or_default();
+        Err(format!("Не удалось пригласить: {}", text).into())
+    }
+}
